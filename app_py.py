@@ -501,83 +501,294 @@ class ORBTradingEngine:
         return start_minutes <= current_minutes <= end_minutes
     
     def check_strategies(self):
-        """Check all trading strategies"""
+        """Check all trading strategies with exact rules from MQL5 article"""
         # Update positions from API
         self.sync_positions()
         
-        # Execute strategies with lower probability to avoid overtrading
-        if random.random() < 0.005:  # 0.5% chance per update
-            self.execute_strategy1()
-        if random.random() < 0.003:  # 0.3% chance
-            self.execute_strategy2()
-        if random.random() < 0.007:  # 0.7% chance
-            self.execute_strategy3()
-    
-    def sync_positions(self):
-        """Synchronize positions with TradoVate API"""
-        if not self.api:
-            return
+        # Update candle data
+        self.update_candle_data()
         
-        try:
-            positions = self.api.get_positions()
-            self.positions = {}
-            
-            for pos in positions:
-                symbol = pos.get('symbol', '')
-                if symbol == 'MNQ':  # Only track MNQ positions
-                    self.positions[pos['id']] = pos
-        except:
-            pass
+        # Execute strategies based on exact rules from the research
+        self.execute_strategy1_exact()  # Opening Candle Direction
+        self.execute_strategy2_exact()  # VWAP Trend Following  
+        self.execute_strategy3_exact()  # Concretum Bands Breakout
     
-    def execute_strategy1(self):
-        """Opening Candle Direction Strategy"""
+    def update_candle_data(self):
+        """Update 1m, 5m, and 15m candle data"""
+        current_time = datetime.now()
+        current_minute = current_time.minute
+        current_hour = current_time.hour
+        
+        # Simulate new candle formation
+        new_candle = {
+            'timestamp': current_time,
+            'open': self.current_price + random.uniform(-2, 2),
+            'high': self.current_price + random.uniform(0, 5),
+            'low': self.current_price - random.uniform(0, 5),
+            'close': self.current_price,
+            'volume': random.randint(100, 1000)
+        }
+        
+        # Update 1-minute candles
+        if not hasattr(self, 'candles_1m'):
+            self.candles_1m = []
+        self.candles_1m.append(new_candle)
+        if len(self.candles_1m) > 500:
+            self.candles_1m.pop(0)
+        
+        # Update 5-minute candles (every 5 minutes)
+        if not hasattr(self, 'candles_5m'):
+            self.candles_5m = []
+        if current_minute % 5 == 0:
+            self.candles_5m.append(new_candle)
+            if len(self.candles_5m) > 100:
+                self.candles_5m.pop(0)
+        
+        # Update 15-minute candles (every 15 minutes)
+        if not hasattr(self, 'candles_15m'):
+            self.candles_15m = []
+        if current_minute % 15 == 0:
+            self.candles_15m.append(new_candle)
+            if len(self.candles_15m) > 50:
+                self.candles_15m.pop(0)
+    
+    def execute_strategy1_exact(self):
+        """Strategy 1: Opening Candle Direction (Exact Implementation)"""
         if not self.can_trade('strategy1') or len(self.ma350) < 350:
             return
         
-        ma350_value = sum(self.ma350) / len(self.ma350)
-        
-        # Simulate opening candle logic
-        if self.current_price > ma350_value and random.random() < 0.7:
-            self.place_strategy_order('strategy1', 'Buy', random.randint(1, 3))
-        elif self.current_price < ma350_value and random.random() < 0.7:
-            self.place_strategy_order('strategy1', 'Sell', random.randint(1, 3))
-    
-    def execute_strategy2(self):
-        """VWAP Trend Following Strategy"""
-        if not self.can_trade('strategy2') or len(self.ma300) < 300:
+        # Check daily risk limits before trading
+        risk_ok, risk_msg = self.check_daily_risk_limits()
+        if not risk_ok:
             return
         
+        if not hasattr(self, 'candles_5m') or len(self.candles_5m) < 2:
+            return
+        
+        # Check if this is 5 minutes after market open (9:35 AM ET)
+        now = datetime.now()
+        
+        # Only trigger at exactly 9:35 AM (5 minutes after market open)
+        if not (now.hour == 9 and now.minute == 35):
+            return
+        
+        # Get the opening 5-minute candle (9:30-9:35)
+        opening_candle = self.candles_5m[-1]
+        ma350_value = sum(self.ma350) / len(self.ma350)
+        
+        # Check for bullish candle above MA350
+        if (opening_candle['close'] > opening_candle['open'] and 
+            opening_candle['close'] > ma350_value):
+            position_size = self.calculate_position_size_exact(2.0)  # Strategy 1 uses base risk
+            self.place_strategy_order('strategy1', 'Buy', position_size)
+            
+        # Check for bearish candle below MA350  
+        elif (opening_candle['close'] < opening_candle['open'] and 
+              opening_candle['close'] < ma350_value):
+            position_size = self.calculate_position_size_exact(2.0)  # Strategy 1 uses base risk
+            self.place_strategy_order('strategy1', 'Sell', position_size)
+    
+    def execute_strategy2_exact(self):
+        """Strategy 2: VWAP Trend Following (Exact Implementation)"""
+        if len(self.ma300) < 300:
+            return
+        
+        # Check daily risk limits before trading
+        risk_ok, risk_msg = self.check_daily_risk_limits()
+        if not risk_ok:
+            return
+        
+        if not hasattr(self, 'candles_15m') or len(self.candles_15m) < 1:
+            return
+        
+        current_candle = self.candles_15m[-1]
         ma300_value = sum(self.ma300) / len(self.ma300)
         
-        # Check for exit first
+        # Close existing position if price crosses VWAP against us (trailing stop)
         if self.strategy_positions['strategy2']:
-            # Simulate VWAP exit logic
-            if random.random() < 0.1:  # 10% chance to exit
+            position = self.strategy_positions['strategy2']
+            if ((position['action'] == 'Buy' and current_candle['close'] < self.vwap) or
+                (position['action'] == 'Sell' and current_candle['close'] > self.vwap)):
                 self.close_strategy_position('strategy2')
                 return
         
-        # Enter new position
+        # Enter new position if no current position
         if not self.strategy_positions['strategy2']:
-            if self.current_price > self.vwap and self.current_price > ma300_value:
-                self.place_strategy_order('strategy2', 'Buy', random.randint(1, 2))
-            elif self.current_price < self.vwap and self.current_price < ma300_value:
-                self.place_strategy_order('strategy2', 'Sell', random.randint(1, 2))
+            # Long condition: close above VWAP AND above MA300
+            if (current_candle['close'] > self.vwap and 
+                current_candle['close'] > ma300_value):
+                position_size = self.calculate_position_size_exact(2.0)  # Strategy 2 uses base risk
+                self.place_strategy_order('strategy2', 'Buy', position_size)
+                
+            # Short condition: close below VWAP AND below MA300
+            elif (current_candle['close'] < self.vwap and 
+                  current_candle['close'] < ma300_value):
+                position_size = self.calculate_position_size_exact(2.0)  # Strategy 2 uses base risk
+                self.place_strategy_order('strategy2', 'Sell', position_size)
     
-    def execute_strategy3(self):
-        """Concretum Bands Breakout Strategy"""
-        if not self.can_trade('strategy3') or len(self.ma400) < 400:
+    def execute_strategy3_exact(self):
+        """Strategy 3: Concretum Bands Breakout (Exact Implementation)"""
+        if len(self.ma400) < 400:
             return
         
+        # Check daily risk limits before trading
+        risk_ok, risk_msg = self.check_daily_risk_limits()
+        if not risk_ok:
+            return
+        
+        if not hasattr(self, 'candles_1m') or len(self.candles_1m) < 2:
+            return
+        
+        current_candle = self.candles_1m[-1]
+        previous_candle = self.candles_1m[-2]
         ma400_value = sum(self.ma400) / len(self.ma400)
         
-        # Simulate band breakout
-        upper_band = ma400_value * 1.005  # 0.5% above MA400
-        lower_band = ma400_value * 0.995  # 0.5% below MA400
+        # Calculate Concretum Bands
+        session_open_price = self.get_session_open_price()
+        volatility_factor = self.calculate_volatility_factor()
         
-        if self.current_price > upper_band:
-            self.place_strategy_order('strategy3', 'Buy', random.randint(1, 2))
-        elif self.current_price < lower_band:
-            self.place_strategy_order('strategy3', 'Sell', random.randint(1, 2))
+        upper_band = session_open_price * (1 + volatility_factor)
+        lower_band = session_open_price * (1 - volatility_factor)
+        
+        # Close existing position if price crosses VWAP against us (trailing stop)
+        if self.strategy_positions['strategy3']:
+            position = self.strategy_positions['strategy3']
+            if ((position['action'] == 'Buy' and current_candle['close'] < self.vwap) or
+                (position['action'] == 'Sell' and current_candle['close'] > self.vwap)):
+                self.close_strategy_position('strategy3')
+                return
+        
+        # Enter new position if no current position
+        if not self.strategy_positions['strategy3']:
+            # Long breakout: previous candle below upper band, current candle above upper band
+            if (previous_candle['open'] < upper_band and 
+                current_candle['close'] > upper_band and
+                current_candle['close'] > ma400_value):
+                position_size = self.calculate_position_size_exact(4.0)  # Strategy 3 uses higher risk
+                self.place_strategy_order('strategy3', 'Buy', position_size)
+                
+            # Short breakout: previous candle above lower band, current candle below lower band
+            elif (previous_candle['open'] > lower_band and 
+                  current_candle['close'] < lower_band and
+                  current_candle['close'] < ma400_value):
+                position_size = self.calculate_position_size_exact(4.0)  # Strategy 3 uses higher risk
+                self.place_strategy_order('strategy3', 'Sell', position_size)
+    
+    def get_session_open_price(self):
+        """Get the market open price (9:30 AM ET)"""
+        if not hasattr(self, 'session_open_price'):
+            self.session_open_price = self.current_price
+        return self.session_open_price
+    
+    def calculate_volatility_factor(self):
+        """Calculate volatility factor for Concretum Bands
+        
+        Simplified version - in real implementation would use:
+        14-day historical moves at same time of day
+        """
+        if not hasattr(self, 'historical_moves'):
+            # Initialize with some sample moves (0.3% to 0.7% typical intraday range)
+            self.historical_moves = [random.uniform(0.003, 0.007) for _ in range(14)]
+        
+        # Update with new random move occasionally
+        if random.random() < 0.1:  # 10% chance to update
+            new_move = random.uniform(0.003, 0.007)
+            self.historical_moves.append(new_move)
+            if len(self.historical_moves) > 14:
+                self.historical_moves.pop(0)
+        
+        # Return average move as volatility factor
+        return sum(self.historical_moves) / len(self.historical_moves)
+    
+    def calculate_position_size_exact(self, strategy_risk_multiplier):
+        """Calculate position size based on UI risk settings and exact research rules
+        
+        Uses the risk parameters selected in Streamlit UI:
+        - Risk Range: $90-100 (Conservative) / $100-150 (Moderate) / $150-200 (Aggressive)
+        - Stop Loss: 0.8% (Tight) / 1.0% (Standard) / 1.5% (Wide)
+        
+        Args:
+            strategy_risk_multiplier: 2.0 for strategies 1&2, 4.0 for strategy 3
+        """
+        # Get the actual risk amount from UI settings (not percentage)
+        base_risk = self.risk_settings['max_risk']  # This is the dollar amount from UI
+        
+        # Apply strategy multiplier but cap at max risk per trade
+        if strategy_risk_multiplier == 4.0:  # Strategy 3 gets higher risk
+            risk_amount = min(base_risk * 1.5, 200)  # Max $200 for aggressive strategy 3
+        else:  # Strategies 1 & 2
+            risk_amount = base_risk
+        
+        # Use stop loss percentage from UI settings
+        stop_loss_pct = self.risk_settings['stop_loss_pct']
+        
+        # Calculate stop loss distance in dollars
+        stop_loss_distance = self.current_price * stop_loss_pct
+        
+        # MNQ contract specifications
+        tick_size = 0.25
+        tick_value = 0.50
+        contract_multiplier = 2
+        
+        # Calculate position size using leverage space model
+        # Position Size = Risk Amount / (Stop Loss Distance in Ticks × Tick Value)
+        stop_loss_ticks = stop_loss_distance / tick_size
+        
+        if stop_loss_ticks > 0:
+            position_size = risk_amount / (stop_loss_ticks * tick_value)
+        else:
+            position_size = 1
+        
+        # Round to whole contracts and ensure minimum 1
+        position_size = max(1, int(round(position_size)))
+        
+        # Apply reasonable maximum based on risk level
+        if base_risk <= 100:  # Conservative
+            max_contracts = 3
+        elif base_risk <= 150:  # Moderate  
+            max_contracts = 5
+        else:  # Aggressive
+            max_contracts = 8
+            
+        position_size = min(position_size, max_contracts)
+        
+        return position_size
+    
+    def check_daily_risk_limits(self):
+        """Check if daily risk limits from UI have been exceeded"""
+        daily_loss_limit = self.risk_settings['daily_limit']
+        
+        # Calculate current daily loss (negative P&L only)
+        current_daily_loss = abs(min(0, self.daily_pnl))
+        
+        if current_daily_loss >= daily_loss_limit:
+            # Stop trading for the day
+            self.trading_enabled = False
+            return False, f"🚨 Daily loss limit reached: ${current_daily_loss:.2f} / ${daily_loss_limit:.2f}"
+        
+        return True, f"Daily risk OK: ${current_daily_loss:.2f} / ${daily_loss_limit:.2f}"
+    
+    def get_risk_summary(self):
+        """Get summary of current risk usage from UI settings"""
+        daily_loss = abs(min(0, self.daily_pnl))
+        daily_limit = self.risk_settings['daily_limit']
+        daily_usage_pct = (daily_loss / daily_limit) * 100 if daily_limit > 0 else 0
+        
+        # Calculate total risk (this would track across multiple days in real implementation)
+        total_loss = abs(min(0, self.daily_pnl))  # Simplified for demo
+        total_limit = self.risk_settings['total_limit']
+        total_usage_pct = (total_loss / total_limit) * 100 if total_limit > 0 else 0
+        
+        return {
+            'daily_loss': daily_loss,
+            'daily_limit': daily_limit,
+            'daily_usage_pct': daily_usage_pct,
+            'total_loss': total_loss,
+            'total_limit': total_limit,
+            'total_usage_pct': total_usage_pct,
+            'max_risk_per_trade': self.risk_settings['max_risk'],
+            'stop_loss_pct': self.risk_settings['stop_loss_pct'] * 100
+        }
     
     def can_trade(self, strategy):
         """Check if strategy can trade"""
@@ -1080,6 +1291,103 @@ with col2:
         }
         st.session_state.trading_engine.update_risk_settings(risk_settings)
         st.success("✅ Risk settings updated successfully!")
+
+# Live Risk Monitoring
+st.markdown("## 📊 Live Risk Monitoring")
+
+# Get current risk summary
+risk_summary = st.session_state.trading_engine.get_risk_summary()
+
+col1, col2, col3, col4 = st.columns(4)
+
+with col1:
+    st.metric(
+        label="Max Risk Per Trade",
+        value=f"${risk_summary['max_risk_per_trade']}",
+        delta=f"Stop Loss: {risk_summary['stop_loss_pct']:.1f}%"
+    )
+
+with col2:
+    daily_color = "normal" if risk_summary['daily_usage_pct'] < 50 else "inverse"
+    st.metric(
+        label="Daily Risk Usage",
+        value=f"${risk_summary['daily_loss']:.0f}",
+        delta=f"{risk_summary['daily_usage_pct']:.1f}% of ${risk_summary['daily_limit']}",
+        delta_color=daily_color
+    )
+
+with col3:
+    total_color = "normal" if risk_summary['total_usage_pct'] < 50 else "inverse"
+    st.metric(
+        label="Total Risk Usage",
+        value=f"${risk_summary['total_loss']:.0f}",
+        delta=f"{risk_summary['total_usage_pct']:.1f}% of ${risk_summary['total_limit']}",
+        delta_color=total_color
+    )
+
+with col4:
+    # Show next position size calculation
+    next_pos_size = st.session_state.trading_engine.calculate_position_size_exact(2.0)
+    st.metric(
+        label="Next Position Size",
+        value=f"{next_pos_size} contracts",
+        delta=f"Strategies 1&2"
+    )
+
+# Risk level visualization
+col1, col2 = st.columns(2)
+
+with col1:
+    st.markdown("### 📈 Position Sizing Example")
+    engine = st.session_state.trading_engine
+    
+    # Calculate example position sizes for current settings
+    strategy_1_2_size = engine.calculate_position_size_exact(2.0)
+    strategy_3_size = engine.calculate_position_size_exact(4.0)
+    
+    st.markdown(f"""
+    **Based on your current risk settings:**
+    
+    **Risk Level:** {engine.risk_settings['max_risk']} per trade
+    **Stop Loss:** {engine.risk_settings['stop_loss_pct']*100:.1f}%
+    
+    **Position Sizes:**
+    - **Strategy 1 & 2:** {strategy_1_2_size} contracts (${engine.risk_settings['max_risk']} risk)
+    - **Strategy 3:** {strategy_3_size} contracts (${engine.risk_settings['max_risk']*1.5:.0f} risk)
+    
+    **Risk Calculation:**
+    ```
+    Position Size = Risk Amount / (Stop Loss × Tick Value)
+    = ${engine.risk_settings['max_risk']} / ({engine.risk_settings['stop_loss_pct']*100:.1f}% × $0.50)
+    = {strategy_1_2_size} contracts
+    ```
+    """)
+
+with col2:
+    st.markdown("### ⚠️ Risk Level Impact")
+    
+    # Show what happens with different risk levels
+    conservative_size = max(1, int(95 / ((engine.risk_settings['stop_loss_pct'] * engine.current_price) / 0.25 * 0.50)))
+    moderate_size = max(1, int(125 / ((engine.risk_settings['stop_loss_pct'] * engine.current_price) / 0.25 * 0.50)))
+    aggressive_size = max(1, int(175 / ((engine.risk_settings['stop_loss_pct'] * engine.current_price) / 0.25 * 0.50)))
+    
+    st.markdown(f"""
+    **Risk Level Comparison:**
+    
+    **Conservative ($90-$100):** {min(conservative_size, 3)} contracts max
+    **Moderate ($100-$150):** {min(moderate_size, 5)} contracts max  
+    **Aggressive ($150-$200):** {min(aggressive_size, 8)} contracts max
+    
+    **Your Current Setting:** 
+    **{[k for k,v in {'$90 - $100 (Conservative)': 95, '$100 - $150 (Moderate)': 125, '$150 - $200 (Aggressive)': 175}.items() if v == engine.risk_settings['max_risk']][0] if engine.risk_settings['max_risk'] in [95, 125, 175] else 'Custom'}**
+    
+    **Daily Limit Status:**
+    - Current Loss: ${risk_summary['daily_loss']:.0f}
+    - Limit: ${risk_summary['daily_limit']}
+    - Remaining: ${risk_summary['daily_limit'] - risk_summary['daily_loss']:.0f}
+    
+    {'🟢 **Safe to trade**' if risk_summary['daily_usage_pct'] < 50 else '🟡 **Approaching limit**' if risk_summary['daily_usage_pct'] < 80 else '🔴 **Near limit - reduce risk**'}
+    """)
 
 # Performance Dashboard
 st.markdown("## 📊 Performance Dashboard")

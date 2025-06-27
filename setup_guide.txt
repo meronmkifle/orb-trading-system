@@ -1,0 +1,189 @@
+# ORB Trading System - Setup Guide
+
+## 🚀 Complete Integration: Frontend + Backend
+
+This setup connects your Streamlit frontend with a Node.js backend that runs the actual trading algorithms.
+
+## 📁 File Structure
+```
+orb-trading-system/
+├── app.py                 # Streamlit frontend (integrated version)
+├── trading_backend.js     # Node.js backend server
+├── package.json          # Node.js dependencies
+├── requirements.txt      # Python dependencies
+├── README.md
+└── SETUP_GUIDE.md        # This file
+```
+
+## ⚙️ Installation Steps
+
+### 1. Install Node.js Backend
+```bash
+# Install Node.js dependencies
+npm install
+
+# Or if you prefer yarn
+yarn install
+```
+
+### 2. Install Python Frontend
+```bash
+# Install Python dependencies
+pip install -r requirements.txt
+```
+
+## 🚀 Running the System
+
+### Option 1: Manual Start (Recommended for Development)
+
+**Terminal 1 - Start Backend:**
+```bash
+node trading_backend.js
+```
+You should see:
+```
+🚀 ORB Trading Backend running on port 3001
+📊 Health check: http://localhost:3001/health
+📈 Status endpoint: http://localhost:3001/status
+```
+
+**Terminal 2 - Start Frontend:**
+```bash
+streamlit run app.py
+```
+
+### Option 2: Integrated Start (From Streamlit)
+
+1. Start only the Streamlit app:
+   ```bash
+   streamlit run app.py
+   ```
+
+2. In the UI:
+   - Enter your TradoVate API credentials
+   - Click "🚀 START BACKEND" 
+   - The system will automatically start the Node.js backend
+
+## 🔧 Configuration
+
+### TradoVate API Setup
+1. Get API credentials from TradoVate
+2. In the Streamlit UI, enter:
+   - API Key
+   - API Secret  
+   - Environment (Demo/Live)
+
+### Risk Parameters
+Configure in the UI:
+- Risk per trade: $90-200 ranges
+- Stop loss: 0.8%-1.5%
+- Daily limits: $500-2500
+- Total limits: $2500-12500
+
+## 🎯 How It Works
+
+### Frontend (Streamlit)
+- **User Interface:** Clean, professional trading dashboard
+- **Controls:** Start/Stop/Pause/Resume buttons
+- **Monitoring:** Real-time positions, P&L, strategy status
+- **Configuration:** Risk settings, API credentials
+
+### Backend (Node.js)
+- **Trading Engine:** Runs the 3 ORB strategies
+- **Market Data:** Simulated live prices (demo mode)
+- **Position Management:** Real position tracking
+- **Risk Management:** Built-in safety controls
+
+### Communication
+- **REST API:** Frontend sends commands to backend
+- **Real-time Updates:** Backend status updates every second
+- **WebSocket:** Live price and position data
+
+## 📊 Trading Strategies
+
+### Strategy 1: Opening Candle Direction
+- **Timeframe:** 5-minute
+- **Logic:** Trade direction of first candle after market open
+- **Filter:** MA350 trend filter
+
+### Strategy 2: VWAP Trend Following  
+- **Timeframe:** 15-minute
+- **Logic:** Enter when price crosses VWAP
+- **Exit:** Dynamic VWAP trailing stop
+
+### Strategy 3: Concretum Bands Breakout
+- **Timeframe:** 1-minute  
+- **Logic:** Breakout above/below volatility bands
+- **Filter:** MA400 + VWAP confirmation
+
+## 🔍 Testing & Demo Mode
+
+### Demo Mode Features
+- ✅ Simulated price movements
+- ✅ Mock position entries/exits
+- ✅ Realistic P&L calculations
+- ✅ All UI functionality working
+- ❌ No real money at risk
+
+### Live Mode (Future)
+- Real TradoVate API integration
+- Actual market data feeds
+- Real position management
+- Live order execution
+
+## 🚨 Troubleshooting
+
+### Backend Won't Start
+```bash
+# Check if port 3001 is available
+lsof -i :3001
+
+# Kill any process using the port
+kill -9 <PID>
+```
+
+### Frontend Can't Connect
+1. Verify backend is running: `http://localhost:3001/health`
+2. Check firewall settings
+3. Ensure both frontend and backend are on same machine
+
+### API Connection Issues
+1. Verify TradoVate credentials
+2. Check environment setting (demo vs live)
+3. Ensure account has API access enabled
+
+## 📈 Next Steps
+
+### Phase 1: Testing (Current)
+- ✅ Demo mode with simulated trading
+- ✅ Full UI functionality
+- ✅ Risk management testing
+
+### Phase 2: Live Integration
+- 🔄 Real TradoVate API integration
+- 🔄 Live market data feeds
+- 🔄 Actual order execution
+
+### Phase 3: Enhancement
+- 📊 Advanced analytics
+- 📈 Performance tracking
+- 🎯 Strategy optimization
+
+## ⚠️ Important Notes
+
+- **Demo Mode:** Safe for testing, no real trades
+- **Live Mode:** Use small position sizes initially
+- **Risk Management:** Always set appropriate limits
+- **Testing:** Thoroughly test in demo before going live
+
+## 🆘 Support
+
+If you encounter issues:
+1. Check the console logs (both terminals)
+2. Verify all dependencies are installed
+3. Ensure API credentials are correct
+4. Test the health endpoint: `http://localhost:3001/health`
+
+---
+
+**Happy Trading! 📈🚀**

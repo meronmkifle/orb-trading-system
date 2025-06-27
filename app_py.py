@@ -2,14 +2,8 @@ import streamlit as st
 import pandas as pd
 import time
 import json
-import subprocess
-import os
-import signal
-import threading
-import queue
 from datetime import datetime
-import requests
-import websocket
+import random
 
 # Page configuration
 st.set_page_config(
@@ -83,139 +77,30 @@ st.markdown("""
         background: #fff3cd;
     }
     
-    .connection-status {
-        padding: 10px;
-        border-radius: 6px;
-        margin: 10px 0;
-        text-align: center;
-        font-weight: bold;
-    }
-    
-    .connected {
-        background-color: #d4edda;
-        color: #155724;
-        border: 1px solid #c3e6cb;
-    }
-    
-    .disconnected {
-        background-color: #f8d7da;
-        color: #721c24;
-        border: 1px solid #f5c6cb;
+    .info-box {
+        background: #e3f2fd;
+        border: 1px solid #2196f3;
+        border-radius: 8px;
+        padding: 15px;
+        margin: 15px 0;
+        color: #1565c0;
     }
 </style>
 """, unsafe_allow_html=True)
 
-class ORBTradingBridge:
-    """Bridge between Streamlit frontend and Node.js backend"""
-    
-    def __init__(self):
-        self.backend_process = None
-        self.backend_port = 3001
-        self.backend_url = f"http://localhost:{self.backend_port}"
-        self.is_connected = False
-        
-    def start_backend(self, api_key, api_secret, environment, risk_settings):
-        """Start the Node.js backend trading system"""
-        try:
-            # Create config for backend
-            config = {
-                'apiKey': api_key,
-                'apiSecret': api_secret,
-                'environment': environment,
-                'riskSettings': risk_settings
-            }
-            
-            # Save config to file for backend to read
-            with open('backend_config.json', 'w') as f:
-                json.dump(config, f)
-            
-            # Start Node.js backend process
-            cmd = ['node', 'trading_backend.js']
-            self.backend_process = subprocess.Popen(
-                cmd, 
-                stdout=subprocess.PIPE, 
-                stderr=subprocess.PIPE,
-                env={**os.environ, 'CONFIG_FILE': 'backend_config.json'}
-            )
-            
-            # Wait a moment for backend to start
-            time.sleep(3)
-            
-            # Test connection
-            self.is_connected = self.test_connection()
-            return self.is_connected
-            
-        except Exception as e:
-            st.error(f"Failed to start backend: {str(e)}")
-            return False
-    
-    def stop_backend(self):
-        """Stop the Node.js backend"""
-        if self.backend_process:
-            self.backend_process.terminate()
-            self.backend_process = None
-        self.is_connected = False
-    
-    def test_connection(self):
-        """Test if backend is responding"""
-        try:
-            response = requests.get(f"{self.backend_url}/status", timeout=5)
-            return response.status_code == 200
-        except:
-            return False
-    
-    def send_command(self, command, data=None):
-        """Send command to backend"""
-        try:
-            if not self.is_connected:
-                return {"error": "Backend not connected"}
-                
-            payload = {"command": command}
-            if data:
-                payload.update(data)
-                
-            response = requests.post(
-                f"{self.backend_url}/command", 
-                json=payload, 
-                timeout=10
-            )
-            return response.json()
-        except Exception as e:
-            return {"error": str(e)}
-    
-    def get_system_status(self):
-        """Get current system status from backend"""
-        try:
-            response = requests.get(f"{self.backend_url}/status", timeout=5)
-            return response.json()
-        except:
-            return {
-                "system_running": False,
-                "trading_enabled": False,
-                "current_price": 0,
-                "positions": {},
-                "market_open": False
-            }
-
 # Initialize session state
-if 'bridge' not in st.session_state:
-    st.session_state.bridge = ORBTradingBridge()
-
-if 'backend_running' not in st.session_state:
-    st.session_state.backend_running = False
-
-if 'system_data' not in st.session_state:
-    st.session_state.system_data = {
-        "system_running": False,
-        "trading_enabled": False,
-        "current_price": 16234.50,
-        "positions": {},
-        "market_open": False,
-        "vwap": 16231.25,
-        "daily_pnl": 0,
-        "total_trades": 0
+if 'system_running' not in st.session_state:
+    st.session_state.system_running = False
+if 'trading_enabled' not in st.session_state:
+    st.session_state.trading_enabled = False
+if 'current_price' not in st.session_state:
+    st.session_state.current_price = 16234.50
+if 'positions' not in st.session_state:
+    st.session_state.positions = {
+        'strategy1': {'side': 'LONG', 'quantity': 2, 'entry_price': 16230.25, 'pnl': 17.00},
+        'strategy2': None,
+        'strategy3': {'side': 'SHORT', 'quantity': 1, 'entry_price': 16240.00, 'pnl': 11.00}
     }
-
 if 'risk_settings' not in st.session_state:
     st.session_state.risk_settings = {
         'risk_range': '$100 - $150 (Moderate)',
@@ -223,124 +108,101 @@ if 'risk_settings' not in st.session_state:
         'daily_limit': '$900 (Standard Account)',
         'total_limit': '$4,200 (Standard Account)'
     }
+if 'last_update' not in st.session_state:
+    st.session_state.last_update = time.time()
+if 'api_connected' not in st.session_state:
+    st.session_state.api_connected = False
 
 # Header Section
 st.markdown("""
 <div class="main-header">
     <h1>📈 ORB Trading System</h1>
-    <h2>Live Trading Interface</h2>
+    <h2>Demo Trading Interface</h2>
 </div>
 """, unsafe_allow_html=True)
 
-# Get system status from backend
-system_status = st.session_state.bridge.get_system_status()
-st.session_state.system_data.update(system_status)
+# Info about demo mode
+st.markdown("""
+<div class="info-box">
+    <strong>ℹ️ Demo Mode:</strong> This is the frontend interface. To enable live trading, 
+    you'll need to run the Node.js backend locally and integrate with TradoVate API.
+    <br><br>
+    <strong>📘 Setup Instructions:</strong> 
+    <a href="https://github.com/meronmkifle/orb-trading-system" target="_blank">
+        View GitHub Repository for Full Setup Guide
+    </a>
+</div>
+""", unsafe_allow_html=True)
 
 # System Status Display
-if st.session_state.system_data["system_running"]:
-    if st.session_state.system_data["trading_enabled"]:
-        status_text = "🟢 SYSTEM RUNNING & TRADING"
+if st.session_state.system_running:
+    if st.session_state.trading_enabled:
+        status_text = "🟢 SYSTEM RUNNING & TRADING (DEMO)"
         status_class = "status-running"
     else:
-        status_text = "🟡 SYSTEM RUNNING (PAUSED)"
+        status_text = "🟡 SYSTEM RUNNING (PAUSED) (DEMO)"
         status_class = "status-paused"
 else:
-    status_text = "🔴 SYSTEM STOPPED"
+    status_text = "🔴 SYSTEM STOPPED (DEMO)"
     status_class = "status-stopped"
 
 st.markdown(f'<div class="{status_class}" style="text-align: center; margin: 20px 0;">{status_text}</div>', unsafe_allow_html=True)
 
-# Backend Connection Status
-connection_class = "connected" if st.session_state.bridge.is_connected else "disconnected"
-connection_text = "✅ Backend Connected" if st.session_state.bridge.is_connected else "❌ Backend Disconnected"
-st.markdown(f'<div class="connection-status {connection_class}">{connection_text}</div>', unsafe_allow_html=True)
-
 # Sidebar - Control Panel
 with st.sidebar:
     st.markdown("### 🎛️ System Controls")
+    st.markdown("*Demo Mode - UI Only*")
     
-    # Backend control
-    if not st.session_state.backend_running:
-        if st.button("🚀 START BACKEND", use_container_width=True, type="primary"):
-            # Get API settings first
-            api_key = st.session_state.get('api_key', '')
-            api_secret = st.session_state.get('api_secret', '')
-            environment = st.session_state.get('environment', 'demo')
-            
-            if api_key and api_secret:
-                if st.session_state.bridge.start_backend(api_key, api_secret, environment, st.session_state.risk_settings):
-                    st.session_state.backend_running = True
-                    st.success("✅ Backend Started!")
-                    st.rerun()
-                else:
-                    st.error("❌ Failed to start backend")
-            else:
-                st.error("❌ Please enter API credentials first")
-    else:
-        if st.button("🛑 STOP BACKEND", use_container_width=True):
-            st.session_state.bridge.stop_backend()
-            st.session_state.backend_running = False
-            st.success("✅ Backend Stopped")
-            st.rerun()
-    
-    st.markdown("---")
-    
-    # Trading control buttons (only work if backend is connected)
+    # Main control buttons
     col1, col2 = st.columns(2)
     
     with col1:
-        if st.button("▶️ START", use_container_width=True, type="primary", disabled=not st.session_state.bridge.is_connected):
-            result = st.session_state.bridge.send_command("start")
-            if "error" not in result:
-                st.success("✅ Trading Started!")
-            else:
-                st.error(f"❌ {result['error']}")
+        if st.button("▶️ START", use_container_width=True, type="primary"):
+            st.session_state.system_running = True
+            st.session_state.trading_enabled = True
+            st.success("✅ Demo System Started!")
             
-        if st.button("⏸️ PAUSE", use_container_width=True, disabled=not st.session_state.bridge.is_connected):
-            result = st.session_state.bridge.send_command("pause")
-            if "error" not in result:
-                st.warning("⏸️ Trading Paused")
+        if st.button("⏸️ PAUSE", use_container_width=True):
+            if st.session_state.system_running:
+                st.session_state.trading_enabled = False
+                st.warning("⏸️ Demo Trading Paused")
             else:
-                st.error(f"❌ {result['error']}")
+                st.error("System must be running to pause")
     
     with col2:
-        if st.button("🛑 STOP", use_container_width=True, disabled=not st.session_state.bridge.is_connected):
-            result = st.session_state.bridge.send_command("stop")
-            if "error" not in result:
-                st.error("🛑 Trading Stopped")
-            else:
-                st.error(f"❌ {result['error']}")
+        if st.button("🛑 STOP", use_container_width=True):
+            st.session_state.system_running = False
+            st.session_state.trading_enabled = False
+            st.error("🛑 Demo System Stopped")
             
-        if st.button("▶️ RESUME", use_container_width=True, disabled=not st.session_state.bridge.is_connected):
-            result = st.session_state.bridge.send_command("resume")
-            if "error" not in result:
-                st.success("▶️ Trading Resumed")
+        if st.button("▶️ RESUME", use_container_width=True):
+            if st.session_state.system_running:
+                st.session_state.trading_enabled = True
+                st.success("▶️ Demo Trading Resumed")
             else:
-                st.error(f"❌ {result['error']}")
+                st.error("System must be running to resume")
     
     # Emergency controls
     st.markdown("---")
     st.markdown("### 🚨 Emergency Controls")
     
-    if st.button("🔴 CLOSE ALL POSITIONS", use_container_width=True, type="secondary", disabled=not st.session_state.bridge.is_connected):
-        result = st.session_state.bridge.send_command("close_all")
-        if "error" not in result:
-            st.warning("🔴 All positions closed!")
-        else:
-            st.error(f"❌ {result['error']}")
+    if st.button("🔴 CLOSE ALL POSITIONS", use_container_width=True, type="secondary"):
+        # Clear all positions
+        for key in st.session_state.positions:
+            st.session_state.positions[key] = None
+        st.warning("🔴 All demo positions closed!")
     
     # Quick status
     st.markdown("---")
     st.markdown("### 📊 Quick Status")
     
-    market_status = "🟢 OPEN" if st.session_state.system_data["market_open"] else "🔴 CLOSED"
-    active_positions = len([p for p in st.session_state.system_data["positions"].values() if p])
+    market_status = "🟢 OPEN" if datetime.now().hour >= 9 and datetime.now().hour < 16 else "🔴 CLOSED"
+    active_positions = sum(1 for pos in st.session_state.positions.values() if pos is not None)
     
     st.markdown(f"""
     **Market:** {market_status}  
     **Positions:** {active_positions} Active  
-    **Last Price:** ${st.session_state.system_data["current_price"]:,.2f}  
-    **Daily P&L:** ${st.session_state.system_data.get("daily_pnl", 0):,.2f}
+    **Last Price:** ${st.session_state.current_price:,.2f}
     """)
 
 # Main Content
@@ -349,17 +211,16 @@ st.markdown("## 📊 Current Price")
 
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
-    price_change = "+$12.25 (+0.08%)"  # This would be calculated from real data
     st.markdown(f"""
     <div class="price-display">
         <h2>MNQ - Micro E-mini Nasdaq-100</h2>
-        <div class="price-value">${st.session_state.system_data["current_price"]:,.2f}</div>
-        <div style="font-size: 18px; color: #2ecc71;">▲ {price_change}</div>
+        <div class="price-value">${st.session_state.current_price:,.2f}</div>
+        <div style="font-size: 18px; color: #2ecc71;">▲ +$12.25 (+0.08%)</div>
         <div style="margin-top: 10px; color: #7f8c8d;">
             Last Updated: {datetime.now().strftime("%I:%M:%S %p")}
         </div>
-        <div style="margin-top: 10px; color: #3498db;">
-            VWAP: ${st.session_state.system_data.get("vwap", 0):,.2f}
+        <div style="margin-top: 5px; font-size: 14px; color: #e74c3c;">
+            📊 DEMO DATA - Not Live Market Prices
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -369,25 +230,24 @@ st.markdown("## 🎯 Strategy Overview")
 
 col1, col2, col3 = st.columns(3)
 
-positions = st.session_state.system_data["positions"]
 strategies = [
     {
         'name': 'Strategy 1',
         'title': 'Opening Candle',
-        'status': 'ACTIVE' if positions.get('strategy1') else 'WAITING',
-        'position': f"{positions['strategy1']['side'].upper()} {positions['strategy1']['quantity']}" if positions.get('strategy1') else "None"
+        'status': 'ACTIVE' if st.session_state.positions['strategy1'] else 'WAITING',
+        'position': f"LONG 2" if st.session_state.positions['strategy1'] else "None"
     },
     {
         'name': 'Strategy 2', 
         'title': 'VWAP Following',
-        'status': 'ACTIVE' if positions.get('strategy2') else 'WAITING',
-        'position': f"{positions['strategy2']['side'].upper()} {positions['strategy2']['quantity']}" if positions.get('strategy2') else "None"
+        'status': 'WAITING',
+        'position': "None"
     },
     {
         'name': 'Strategy 3',
         'title': 'Bands Breakout', 
-        'status': 'ACTIVE' if positions.get('strategy3') else 'WAITING',
-        'position': f"{positions['strategy3']['side'].upper()} {positions['strategy3']['quantity']}" if positions.get('strategy3') else "None"
+        'status': 'ACTIVE' if st.session_state.positions['strategy3'] else 'WAITING',
+        'position': f"SHORT 1" if st.session_state.positions['strategy3'] else "None"
     }
 ]
 
@@ -409,31 +269,20 @@ for i, (col, strategy) in enumerate(zip([col1, col2, col3], strategies)):
 # Open Positions
 st.markdown("## 📋 Open Positions")
 
-# Create positions data from backend
+# Create positions data
 positions_data = []
 total_pnl = 0
 
-for strategy_name, position in positions.items():
+for strategy, position in st.session_state.positions.items():
     if position:
-        # Calculate unrealized P&L (this would come from backend in real implementation)
-        entry_price = position.get('entryPrice', 0)
-        current_price = st.session_state.system_data["current_price"]
-        quantity = position.get('quantity', 0)
-        side = position.get('side', 'long')
-        
-        if side == 'long':
-            pnl = (current_price - entry_price) * quantity * 2  # MNQ multiplier
-        else:
-            pnl = (entry_price - current_price) * quantity * 2
-        
         positions_data.append({
-            'Strategy': strategy_name.replace('strategy', 'Strategy '),
-            'Direction': side.upper(),
-            'Contracts': quantity,
-            'Entry Price': f"${entry_price:,.2f}",
-            'Current P&L': f"${pnl:,.2f}"
+            'Strategy': strategy.replace('strategy', 'Strategy '),
+            'Direction': position['side'],
+            'Contracts': position['quantity'],
+            'Entry Price': f"${position['entry_price']:,.2f}",
+            'Current P&L': f"${position['pnl']:,.2f}"
         })
-        total_pnl += pnl
+        total_pnl += position['pnl']
 
 if positions_data:
     df_positions = pd.DataFrame(positions_data)
@@ -445,36 +294,25 @@ if positions_data:
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        if positions.get('strategy1') and st.button("Close Strategy 1", use_container_width=True):
-            result = st.session_state.bridge.send_command("close_position", {"strategy": "strategy1"})
-            if "error" not in result:
-                st.success("Strategy 1 position closed")
-            else:
-                st.error(f"Error: {result['error']}")
+        if st.session_state.positions['strategy1'] and st.button("Close Strategy 1", use_container_width=True):
+            st.session_state.positions['strategy1'] = None
+            st.success("Strategy 1 demo position closed")
     
     with col2:
-        if positions.get('strategy2') and st.button("Close Strategy 2", use_container_width=True):
-            result = st.session_state.bridge.send_command("close_position", {"strategy": "strategy2"})
-            if "error" not in result:
-                st.success("Strategy 2 position closed")
-            else:
-                st.error(f"Error: {result['error']}")
+        if st.session_state.positions['strategy2'] and st.button("Close Strategy 2", use_container_width=True):
+            st.session_state.positions['strategy2'] = None
+            st.success("Strategy 2 demo position closed")
     
     with col3:
-        if positions.get('strategy3') and st.button("Close Strategy 3", use_container_width=True):
-            result = st.session_state.bridge.send_command("close_position", {"strategy": "strategy3"})
-            if "error" not in result:
-                st.success("Strategy 3 position closed")
-            else:
-                st.error(f"Error: {result['error']}")
+        if st.session_state.positions['strategy3'] and st.button("Close Strategy 3", use_container_width=True):
+            st.session_state.positions['strategy3'] = None
+            st.success("Strategy 3 demo position closed")
     
     # Total P&L
-    pnl_color = "#2ecc71" if total_pnl >= 0 else "#e74c3c"
-    pnl_sign = "+" if total_pnl >= 0 else ""
     st.markdown(f"""
     <div style="text-align: center; margin-top: 20px;">
-        <span style="font-size: 20px; font-weight: bold; color: {pnl_color};">
-            Total P&L: {pnl_sign}${total_pnl:.2f}
+        <span style="font-size: 20px; font-weight: bold; color: #2ecc71;">
+            Total P&L: +${total_pnl:.2f} (DEMO)
         </span>
     </div>
     """, unsafe_allow_html=True)
@@ -538,16 +376,7 @@ with col2:
             'daily_limit': daily_limit,
             'total_limit': total_limit
         }
-        
-        # Send to backend if connected
-        if st.session_state.bridge.is_connected:
-            result = st.session_state.bridge.send_command("update_risk", st.session_state.risk_settings)
-            if "error" not in result:
-                st.success("✅ Risk settings saved and updated in trading system!")
-            else:
-                st.error(f"❌ Failed to update backend: {result['error']}")
-        else:
-            st.success("✅ Risk settings saved locally!")
+        st.success("✅ Risk settings saved! (Demo Mode)")
 
 # Risk level guide
 st.info("""
@@ -567,14 +396,11 @@ col1, col2 = st.columns(2)
 with col1:
     st.markdown("### 🔑 TradoVate API")
     
-    api_key = st.text_input("API Key:", type="password", placeholder="Enter your API key", key="api_key")
-    api_secret = st.text_input("API Secret:", type="password", placeholder="Enter your secret", key="api_secret")
-    environment = st.selectbox("Environment:", ["demo", "live"], index=0, key="environment")
+    api_key = st.text_input("API Key:", type="password", placeholder="Demo mode - not required", disabled=True)
+    api_secret = st.text_input("API Secret:", type="password", placeholder="Demo mode - not required", disabled=True)
+    environment = st.selectbox("Environment:", ["demo", "live"], index=0, disabled=True)
     
-    # Store in session state
-    st.session_state.api_key = api_key
-    st.session_state.api_secret = api_secret
-    st.session_state.environment = environment
+    st.info("💡 **For Live Trading:** Download the full system from GitHub and run locally with Node.js backend")
 
 with col2:
     st.markdown("### 📊 Trading Symbol")
@@ -589,26 +415,71 @@ with col2:
     
     st.markdown("---")
     
-    backend_status = "✅ Connected" if st.session_state.bridge.is_connected else "❌ Disconnected"
-    market_status = "🟢 OPEN" if st.session_state.system_data["market_open"] else "🔴 CLOSED"
-    
     st.markdown(f"""
-    **Backend Status:** {backend_status}  
-    **Market Status:** {market_status}  
-    **Total Trades Today:** {st.session_state.system_data.get("total_trades", 0)}
+    **Connection Status:** 🟡 Demo Mode  
+    **Market Status:** 🟢 OPEN (Simulated)  
+    **Backend Status:** ❌ Not Connected (Frontend Only)
     """)
 
-# Auto-refresh for live updates when backend is connected
-if st.session_state.bridge.is_connected:
-    time.sleep(1)  # Refresh every second
-    st.rerun()
+# Live Trading Setup Instructions
+st.markdown("## 🚀 Enable Live Trading")
+
+st.markdown("""
+### To enable actual trading with your ORB strategies:
+
+1. **Clone the Repository:**
+   ```bash
+   git clone https://github.com/meronmkifle/orb-trading-system.git
+   cd orb-trading-system
+   ```
+
+2. **Install Dependencies:**
+   ```bash
+   # Node.js backend
+   npm install
+   
+   # Python frontend
+   pip install -r requirements.txt
+   ```
+
+3. **Run Both Systems:**
+   ```bash
+   # Terminal 1: Start backend
+   node trading_backend.js
+   
+   # Terminal 2: Start frontend
+   streamlit run app.py
+   ```
+
+4. **Configure API:**
+   - Enter your TradoVate API credentials
+   - Select demo or live environment
+   - Configure risk parameters
+
+5. **Start Trading:**
+   - Click "START BACKEND" to connect
+   - Use the same interface with live data
+   - All strategies will trade automatically
+""")
+
+# Simulate price updates when system is running
+if st.session_state.system_running:
+    current_time = time.time()
+    if current_time - st.session_state.last_update > 3:  # Update every 3 seconds
+        # Simulate small price movements
+        price_change = random.uniform(-10, 10)
+        st.session_state.current_price += price_change
+        st.session_state.current_price = max(15000, min(18000, st.session_state.current_price))
+        st.session_state.last_update = current_time
+        st.rerun()
 
 # Footer
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #7f8c8d; margin-top: 20px;">
-    ORB Trading System - Live Trading Interface<br>
-    <small>Backend: Node.js + TradoVate API | Frontend: Streamlit</small><br>
+    ORB Trading System - Demo Interface<br>
+    <small>For live trading, run the full system locally with Node.js backend</small><br>
+    <small>Visit: <a href="https://github.com/meronmkifle/orb-trading-system" target="_blank">GitHub Repository</a></small><br>
     <small>For educational purposes only. Trade at your own risk.</small>
 </div>
 """, unsafe_allow_html=True)

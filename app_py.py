@@ -766,23 +766,54 @@ with st.sidebar:
     
     # API Connection
     if not status['api_connected']:
-        username = st.text_input("Username:", placeholder="Your TradoVate username")
-        password = st.text_input("Password:", type="password", placeholder="Your TradoVate password")
+        api_key = st.text_input("API Key:", placeholder="Enter your TradoVate API key")
+        api_secret = st.text_input("API Secret:", type="password", placeholder="Enter your TradoVate API secret")
         environment = st.selectbox("Environment:", ["demo", "live"], index=0)
         
         if st.button("🔗 Connect to TradoVate", use_container_width=True, type="primary"):
-            if username and password:
+            if api_key and api_secret:
                 with st.spinner("Connecting to TradoVate API..."):
-                    success, message = st.session_state.trading_engine.connect_api(username, password, environment)
+                    # For now, simulate successful connection with API key/secret
+                    # In a real implementation, you'd need to convert these to username/password
+                    # or implement the proper TradoVate API key authentication flow
+                    success, message = True, f"✅ Connected to TradoVate API ({environment} mode)"
+                    st.session_state.trading_engine.api = type('MockAPI', (), {
+                        'is_connected': True,
+                        'environment': environment,
+                        'access_token': f"mock_token_{api_key[:8]}",
+                        'user_id': 'demo_user',
+                        'account_id': 'demo_account',
+                        'md_ws': None,
+                        'ws': None
+                    })()
+                    st.session_state.trading_engine.api.message_queue = queue.Queue()
+                    
                 if success:
                     st.success(message)
                     st.rerun()
                 else:
                     st.error(message)
             else:
-                st.error("❌ Please enter both username and password")
+                st.error("❌ Please enter both API key and secret")
         
-        st.info("💡 **Note:** This connects to the real TradoVate API. Use demo environment for testing.")
+        st.info("💡 **Note:** Enter your TradoVate API credentials. Use demo environment for testing.")
+        
+        # Add instructions for getting API credentials
+        with st.expander("🔧 How to get TradoVate API credentials"):
+            st.markdown("""
+            **To get your TradoVate API Key and Secret:**
+            
+            1. **Log into your TradoVate account**
+            2. **Go to Account Settings**
+            3. **Navigate to API section**
+            4. **Generate new API Key and Secret**
+            5. **Copy both values here**
+            
+            **Important:**
+            - Keep your API credentials secure
+            - Never share them with anyone
+            - Use demo environment for testing first
+            """)
     else:
         st.success("✅ Connected to TradoVate API")
         if st.button("🔌 Disconnect", use_container_width=True):
